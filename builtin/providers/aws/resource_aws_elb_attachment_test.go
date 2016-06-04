@@ -2,6 +2,7 @@ package aws
 
 import (
 	"fmt"
+	"log"
 	"testing"
 
 	"github.com/aws/aws-sdk-go/service/elb"
@@ -60,7 +61,63 @@ func TestAccAWSELBAttachment_basic(t *testing.T) {
 			},
 		},
 	})
+}
 
+// remove and instance and check that it's correctly re-attached.
+func TestAccAWSELBAttachment_drift(t *testing.T) {
+	var conf elb.LoadBalancerDescription
+
+	deregInstance := func() {
+		conn := testAccProvider.Meta().(*AWSClient).elbconn
+
+		deRegisterInstancesOpts := elb.DeregisterInstancesFromLoadBalancerInput{
+			LoadBalancerName: conf.LoadBalancerName,
+			Instances:        conf.Instances,
+		}
+
+		log.Printf("[DEBUG] deregistering instance %s from ELB", conf.Instances[0].InstanceId)
+
+		_, err := conn.DeregisterInstancesFromLoadBalancer(&deRegisterInstancesOpts)
+		if err != nil {
+			t.Fatalf("Failure deregistering instances from ELB: %s", err)
+		}
+
+	}
+
+	testCheckInstanceAttached := func(count int) resource.TestCheckFunc {
+		return func(*terraform.State) error {
+			if len(conf.Instances) != count {
+				return fmt.Errorf("instance count does not match")
+			}
+			return nil
+		}
+	}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:      func() { testAccPreCheck(t) },
+		IDRefreshName: "aws_elb.bar",
+		Providers:     testAccProviders,
+		CheckDestroy:  testAccCheckAWSELBDestroy,
+		Steps: []resource.TestStep{
+			resource.TestStep{
+				Config: testAccAWSELBAttachmentConfig1,
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckAWSELBExists("aws_elb.bar", &conf),
+					testCheckInstanceAttached(1),
+				),
+			},
+
+			// remove an instance from the ELB, and make sure it gets re-added
+			resource.TestStep{
+				Config:    testAccAWSELBAttachmentConfig1,
+				PreConfig: deregInstance,
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckAWSELBExists("aws_elb.bar", &conf),
+					testCheckInstanceAttached(1),
+				),
+			},
+		},
+	})
 }
 
 // add one attachment
@@ -124,7 +181,7 @@ resource "aws_elb_attachment" "foo2" {
 }
 `
 
-// swap attachments
+// swap attachments between resources
 const testAccAWSELBAttachmentConfig3 = `
 resource "aws_elb" "bar" {
   availability_zones = ["us-west-2a", "us-west-2b", "us-west-2c"]
@@ -160,7 +217,7 @@ resource "aws_elb_attachment" "foo2" {
 }
 `
 
-// destroy attachemnts
+// destroy attachments
 const testAccAWSELBAttachmentConfig4 = `
 resource "aws_elb" "bar" {
   availability_zones = ["us-west-2a", "us-west-2b", "us-west-2c"]

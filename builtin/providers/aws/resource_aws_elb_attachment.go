@@ -64,9 +64,6 @@ func resourceAwsElbAttachmentRead(d *schema.ResourceData, meta interface{}) erro
 
 	// only add the instance that was previously defined for this resource
 	expected := d.Get("instance").(string)
-	if expected == "" {
-		return fmt.Errorf("no instance defined for ELB Attachment")
-	}
 
 	// Retrieve the ELB properties to get a list of attachments
 	describeElbOpts := &elb.DescribeLoadBalancersInput{
@@ -89,10 +86,17 @@ func resourceAwsElbAttachmentRead(d *schema.ResourceData, meta interface{}) erro
 	}
 
 	// only set the instance Id that this resource manages
+	found := false
 	for _, i := range resp.LoadBalancerDescriptions[0].Instances {
 		if expected == *i.InstanceId {
 			d.Set("instance", expected)
+			found = true
 		}
+	}
+
+	if !found {
+		log.Printf("[WARN] instance %s not found in elb attachments", expected)
+		d.SetId("")
 	}
 
 	return nil
