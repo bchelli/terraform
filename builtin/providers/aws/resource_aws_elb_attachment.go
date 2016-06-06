@@ -15,9 +15,6 @@ func resourceAwsElbAttachment() *schema.Resource {
 		Create: resourceAwsElbAttachmentCreate,
 		Read:   resourceAwsElbAttachmentRead,
 		Delete: resourceAwsElbAttachmentDelete,
-		Importer: &schema.ResourceImporter{
-			State: schema.ImportStatePassthrough,
-		},
 
 		Schema: map[string]*schema.Schema{
 			"elb": &schema.Schema{
